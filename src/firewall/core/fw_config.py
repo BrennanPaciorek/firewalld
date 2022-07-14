@@ -174,6 +174,103 @@ class FirewallConfig(object):
         else:
             self._firewalld_conf.read()
 
+    def _reset_defaults(self):
+        order = [
+                    self._zones, self._policy_objects, self._ipsets,
+                    self._services, self._helpers, self._icmptypes
+                ]
+        for io_obj_dict in order:
+            dict_copy = copy.copy(io_obj_dict)
+            for obj_name in dict_copy:
+                obj = dict_copy[obj_name]
+                name = os.path.join(obj.path, obj.filename)
+                try:
+                    shutil.move(name, "%s.old" % name)
+                except Exception as msg:
+                    log.error("Backup of file '%s' failed: %s", name, msg)
+                    os.remove(name)
+                del io_obj_dict[obj_name]
+        self._firewalld_conf.set_defaults()
+        self._firewalld_conf.write()
+
+    def reset_defaults(self):
+        backup_config_dict = self.get_all_io_objects_dict()
+        backup_firewall_conf = copy.copy(self.get_firewalld_conf())
+        try:
+            self._reset_defaults()
+        except Exception as e:
+            log.debug1("fw_config.reset_defaults() failed - restoring firewalld configuration")
+            self.restore_settings_dict(backup_config_dict, backup_firewall_conf)
+            log.debug1("fw_config.reset_defaults() - current configuration restored")
+            raise e
+
+    def restore_settings_dict(self, settings_dict=None, firewalld_conf=None):
+        if settings_dict:
+            current_config = copy.deepcopy(self.get_all_io_objects_dict())
+
+            for icmptype in settings_dict["icmptypes"].values():
+                current_obj = current_config["icmptypes"].get(icmptype.name, None)
+                if current_obj is not None and current_obj != icmptype:
+                    self.set_icmptype_config(current_obj, icmptype.export_config())
+                elif current_obj is None:
+                    self.new_icmptype(icmptype.name, icmptype.export_config())
+            del current_config["icmptypes"]
+            log.debug1("fw_config.restore_settings_dict() - successfully restored icmptypes")
+
+            for helper in settings_dict["helpers"].values():
+                current_obj = current_config["helpers"].get(helper.name, None)
+                if current_obj is not None and current_obj != helper:
+                    self.set_helper_config(current_obj, helper.export_config())
+                elif current_obj is None:
+                    self.new_helper(helper.name, helper.export_config())
+            del current_config["helpers"]
+            log.debug1("fw_config.restore_settings_dict() - successfully restored helpers")
+
+            for service in settings_dict["services"].values():
+                current_obj = current_config["services"].get(service.name, None)
+                if current_obj is not None and current_obj != service:
+                    self.set_service_config(current_obj, service.export_config())
+                elif service is None:
+                    self.new_service(service.name, service.export_config())
+            del current_config["services"]
+            log.debug1("fw_config.restore_settings_dict() - successfully restored services")
+
+            for ipset in settings_dict["ipsets"].values():
+                current_obj = current_config["ipsets"].get(ipset.name, None)
+                if current_obj is not None and current_obj != ipset:
+                    self.set_ipset_config(current_obj, ipset.export_config())
+                elif ipset is None:
+                    self.new_ipset(ipset.name, ipset.export_config())
+            del current_config["ipsets"]
+            log.debug1("fw_config.restore_settings_dict() - successfully restored ipsets")
+
+            for policy_object in settings_dict["policies"].values():
+                current_obj = current_config["policies"].get(policy_object.name, None)
+                if current_obj is not None and current_obj != policy_object:
+                    self.set_policy_object_config_dict(current_obj, policy_object.export_config_dict())
+                elif policy_object is None:
+                    self.new_policy_object_dict(policy_object.name, policy_object.export_config_dict())
+            del current_config["policies"]
+            log.debug1("fw_config.restore_settings_dict() - successfully restored policy_objects")
+
+            for zone in settings_dict["zones"].values():
+                current_obj = current_config["zones"].get(zone.name, None)
+                if current_obj is not None and current_obj != zone:
+                    self.set_zone_config(current_obj, zone.export_config())
+                elif current_obj is None:
+                    self.new_zone(zone.name, zone.export_config())
+            del current_config["zones"]
+            log.debug1("fw_config.restore_settings_dict() - successfully restored zones")
+
+            if len(current_config.keys()) > 0:
+                log.error("fw_config.restore_settings() - restore logic has not been implemented (or has failed) for these IO_type dicts: %s"
+                            % current_config.keys())
+
+        if firewalld_conf:
+            self.set_firewalld_conf(firewalld_conf)
+            self.get_firewalld_conf().write()
+            log.debug1("fw_config.py - restored firewalld.conf successfully")
+
     # policies
 
     def set_policies(self, policies):
