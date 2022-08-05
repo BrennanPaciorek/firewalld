@@ -8,3 +8,5 @@ from firewall.client import FirewallClient, \
 from firewall.core.base import DEFAULT_ZONE_TARGET
 from firewall.core.fw import Firewall
 
+class TestFirewallDReset(unittest.TestCase):
+    pass
